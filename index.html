@@ -1,1 +1,299 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson Plan Builder</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+:root{--navy:#1F3A5F;--light:#E8EEF5;--line:#B8C4D3}
+*{box-sizing:border-box}
+body{font-family:Helvetica,Arial,sans-serif;margin:0;background:#f5f7fa;color:#222}
+header{background:var(--navy);color:#fff;padding:14px 20px}
+header h1{margin:0;font-size:20px}
+main{max-width:900px;margin:0 auto;padding:16px}
+.card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:14px}
+.card h2{margin:0 0 10px;font-size:15px;color:var(--navy)}
+label{display:block;font-size:13px;font-weight:bold;margin:8px 0 3px}
+.hint{font-weight:normal;color:#666}
+input,textarea{width:100%;font:inherit;font-size:14px;padding:6px 8px;border:1px solid var(--line);border-radius:5px}
+textarea{resize:vertical}
+button{font:inherit;font-size:14px;padding:7px 12px;border:1px solid var(--navy);background:#fff;color:var(--navy);border-radius:5px;cursor:pointer}
+button.p{background:var(--navy);color:#fff}
+button:hover{opacity:.85}
+.bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.tabs button{border-radius:5px 5px 0 0}
+.tabs button.on{background:var(--navy);color:#fff}
+#md{font-family:Consolas,monospace;font-size:13px;min-height:420px}
+#msg{font-size:13px;color:#2a6b2a;min-height:18px;margin:4px 0}
+#list .row{display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid #e3e8ee}
+#list .row.sel{background:var(--light)}
+#list .nm{flex:1;cursor:pointer}
+#list small{color:#666}
+#preview{background:#fff;border:1px solid var(--line);padding:28px 34px;font-size:14px;line-height:1.45}
+#preview h1{color:var(--navy);margin:0 0 2px;font-size:26px}
+#preview .sub{color:#555;margin-bottom:12px}
+#preview .info{background:var(--light);border:1px solid var(--line);padding:8px 12px;margin-bottom:12px}
+#preview .bar2{background:var(--navy);color:#fff;font-weight:bold;padding:4px 10px;margin:14px 0 6px}
+#preview ul{margin:2px 0 6px;padding-left:22px}
+#preview table{border-collapse:collapse;width:100%}
+#preview td,#preview th{border:1px solid var(--line);padding:6px 8px;vertical-align:top;text-align:left}
+#preview th{background:var(--light)}
+.hide{display:none}
+</style>
+</head>
+<body>
+<header><h1>Lesson Plan Builder</h1></header>
+<main>
+<div class="card">
+  <div class="bar">
+    <button class="p" id="bPrev">Preview</button>
+    <button class="p" id="bPdf">Download PDF</button>
+    <button id="bSave">Save to browser</button>
+    <button id="bSaveNew">Save as new</button>
+    <button id="bJson">Download JSON</button>
+    <button id="bAll">Download all saved (JSON)</button>
+    <button id="bImp">Import JSON</button>
+    <button id="bNew">New blank plan</button>
+    <input type="file" id="file" accept=".json,.md,.txt" class="hide">
+  </div>
+  <div id="msg"></div>
+</div>
+
+<div class="tabs bar" style="margin-bottom:0">
+  <button id="tForm" class="on">Fill in cells</button>
+  <button id="tMd">Markdown template</button>
+</div>
+
+<div id="pForm" class="card" style="border-top-left-radius:0"></div>
+
+<div id="pMd" class="card hide" style="border-top-left-radius:0">
+  <p style="margin-top:0;font-size:13px">Get the template, fill in the text under each <code>##</code> heading (one item per line for lists; lines in <code>&lt;!-- --&gt;</code> are instructions and are ignored), then click <b>Apply to plan</b>. Each section is placed in the matching cell automatically.</p>
+  <div class="bar">
+    <button id="mBlank">Insert blank template</button>
+    <button id="mForm">Fill from current plan</button>
+    <button class="p" id="mApply">Apply to plan</button>
+    <button id="mCopy">Copy</button>
+    <button id="mDl">Download .md</button>
+    <button id="mUp">Open .md file</button>
+  </div>
+  <textarea id="md" spellcheck="false"></textarea>
+</div>
+
+<div class="card" id="saved">
+  <h2>Saved in this browser</h2>
+  <div id="list"></div>
+</div>
+
+<div id="prevWrap" class="hide">
+  <div class="bar"><button id="bClose">Close preview</button></div>
+  <div id="preview"></div>
+</div>
+</main>
+
+<script>
+// id, label, markdown heading, kind, hint
+const F=[
+['date','Date','Date','line','e.g. October 30, 2026'],
+['grade','Grade','Grade','line','e.g. 9th-10th'],
+['subject','Subject','Subject','line','Course name'],
+['topic','Lesson Topic','Lesson Topic','line','Main topic of the lesson'],
+['objOpening','Opening Group Activity','Objective: Opening Group Activity','list','One objective per line'],
+['objStations','Stations','Objective: Stations','list','One objective per line'],
+['objCloser','Closer','Objective: Closer','list','One objective per line'],
+['materials','Materials Needed','Materials Needed','list','One item per line'],
+['lsNote','Lesson structure note','Lesson Structure Note','line','e.g. (See PowerPoint printout for details)'],
+['startAct','Start: Activity','Start: Activity','list','One activity per line'],
+['startNotes','Start: Notes','Start: Notes','list','Optional notes, one per line'],
+['stAct','Core Activities / Stations: Activity','Stations: Activity','list','One station or activity per line'],
+['stNotes','Core Activities / Stations: Notes','Stations: Notes','list','Optional notes, one per line'],
+['clAct','Closer: Activity','Closer: Activity','list','One activity per line'],
+['clNotes','Closer: Notes','Closer: Notes','list','Optional notes, one per line']
+];
+const GROUPS=[['Class info',0,4],['Students will be able to\u2026',4,7],['Materials',7,8],['Lesson structure',8,15]];
+const DEFAULT={date:'October 30, 2026',grade:'9th-10th',subject:'Project Lead the Way Computer Science Foundations',
+topic:'Binary Numbers and Comprehensive Programming Skills',
+objOpening:'Use binary numbers to make image representations like a computer does.',
+objStations:'Have their work graded for the Python Activity Sheet 1.\nContinue to code in Python on the Above and Beyond with integrity, understanding the importance of honesty and integrity in completing the assignments as their own work and not using unapproved resources (the internet, AI, unapproved collaboration).\nBe able to \u201cread code\u201d from App Inventor.\nIdentify errors through error analysis in Python.',
+objCloser:'Communicate outstanding questions, clarifications, and curiosities, and share non-verbally about themselves.',
+materials:'Various handouts for support and scaffolding\nCanvas materials posted\nLaptops of students',
+lsNote:'(See PowerPoint printout for details)',
+startAct:'Thought encourager\nBinary image individualized worksheet',startNotes:'Collaboration',
+stAct:'1. Above & Beyond\n2. App Inventor\n3. Group Games\n4. Python Error Analysis',
+stNotes:'1: Grading of Activity while working on Above and Beyond / Design\n2: Reading code in App Inventor\n3: Group games\n4: Online in pairs / individual on ErrorAnalysisPacket',
+clAct:'Communicate with teacher',clNotes:'Ticket out the Door'};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const lines=s=>(s||'').split('\n').map(x=>x.replace(/^\s*[-*\u2022]\s+/,'').trim()).filter(Boolean);
+let curId=null;
+
+// ---- build form
+(function(){
+  let h='';
+  GROUPS.forEach(([t,a,b])=>{
+    h+='<h2'+(a?' style="margin-top:18px"':'')+'>'+t+'</h2>';
+    F.slice(a,b).forEach(([id,lab,,kind,hint])=>{
+      h+='<label for="f_'+id+'">'+lab+' <span class="hint">\u2013 '+hint+'</span></label>';
+      h+=kind==='line'?'<input id="f_'+id+'">':'<textarea id="f_'+id+'" rows="3"></textarea>';
+    });
+  });
+  $('pForm').innerHTML=h;
+})();
+const get=()=>{const d={};F.forEach(f=>d[f[0]]=$('f_'+f[0]).value);return d};
+const set=d=>{F.forEach(f=>$('f_'+f[0]).value=(d&&d[f[0]])||'')};
+set(DEFAULT);
+
+function msg(t){$('msg').textContent=t;clearTimeout(msg.t);msg.t=setTimeout(()=>$('msg').textContent='',4000)}
+function dl(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
+const fname=(d,ext)=>'lesson-plan-'+((d.date||d.topic||'plan').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')||'plan')+'.'+ext;
+
+// ---- tabs
+function tab(m){$('pForm').classList.toggle('hide',m);$('pMd').classList.toggle('hide',!m);$('tForm').classList.toggle('on',!m);$('tMd').classList.toggle('on',m)}
+$('tForm').onclick=()=>tab(false);$('tMd').onclick=()=>{tab(true);if(!$('md').value.trim())$('md').value=toMD(null)};
+
+// ---- markdown
+function toMD(d){
+  let s='# Lesson Plan\n<!-- Fill in the text under each ## heading. Do not rename the ## headings. For list sections write one item per line (a leading "- " is optional). Lines inside these comment tags are instructions and are ignored. -->\n\n';
+  F.forEach(([id,,head,kind,hint])=>{
+    s+='## '+head+'\n<!-- '+hint+' -->\n';
+    const v=d&&d[id]?d[id]:'';
+    if(v)s+=(kind==='list'?lines(v).map(x=>'- '+x).join('\n'):v)+'\n';
+    s+='\n';
+  });
+  return s;
+}
+function parseMD(t){
+  t=t.replace(/<!--[\s\S]*?-->/g,'');
+  const out={};let n=0;
+  t.split(/^##[ \t]+/m).slice(1).forEach(p=>{
+    const i=p.indexOf('\n'),head=(i<0?p:p.slice(0,i)).trim().toLowerCase(),val=(i<0?'':p.slice(i+1)).trim();
+    const f=F.find(x=>x[2].toLowerCase()===head);
+    if(f){out[f[0]]=f[3]==='list'?lines(val).join('\n'):val.replace(/\s*\n\s*/g,' ');n++}
+  });
+  return[out,n];
+}
+$('mBlank').onclick=()=>{$('md').value=toMD(null)};
+$('mForm').onclick=()=>{$('md').value=toMD(get())};
+$('mApply').onclick=()=>{
+  const[o,n]=parseMD($('md').value);
+  if(!n){msg('No matching ## headings found. Use Insert blank template to start.');return}
+  set(Object.assign({},get(),o));curId=null;tab(false);msg('Placed '+n+' section'+(n>1?'s':'')+' into the plan.');
+};
+$('mCopy').onclick=()=>{navigator.clipboard.writeText($('md').value).then(()=>msg('Copied.'),()=>msg('Copy failed. Select the text and copy manually.'))};
+$('mDl').onclick=()=>dl('lesson-plan-template.md',$('md').value,'text/markdown');
+$('mUp').onclick=()=>{$('file').dataset.mode='md';$('file').click()};
+
+// ---- preview
+function html(d){
+  const ul=a=>a.length?'<ul>'+a.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'';
+  const sec=(t,k)=>{const a=lines(d[k]);return a.length?'<b>'+t+'</b>'+ul(a):''};
+  const cell=s=>lines(s).map(esc).join('<br>');
+  const rows=[['Start',d.startAct,d.startNotes],['Core Activities: Stations',d.stAct,d.stNotes],['Closer',d.clAct,d.clNotes]]
+    .filter(r=>lines(r[1]).length||lines(r[2]).length).map(r=>'<tr><td><b>'+r[0]+'</b></td><td>'+cell(r[1])+'</td><td>'+cell(r[2])+'</td></tr>').join('');
+  const objs=sec('Opening Group Activity','objOpening')+sec('Stations','objStations')+sec('Closer','objCloser');
+  return '<h1>Lesson Plan</h1><div class="sub">'+esc(d.subject)+'</div>'+
+  '<div class="info"><b>Date:</b> '+esc(d.date)+' &nbsp;&nbsp; <b>Grade:</b> '+esc(d.grade)+'<br><b>Subject:</b> '+esc(d.subject)+'<br><b>Lesson Topic:</b> '+esc(d.topic)+'</div>'+
+  (objs?'<div class="bar2">Students Will Be Able To\u2026</div>'+objs:'')+
+  (lines(d.materials).length?'<div class="bar2">Materials Needed</div>'+ul(lines(d.materials)):'')+
+  (rows||d.lsNote?'<div class="bar2">Lesson Structure</div>':'')+(d.lsNote?'<i>'+esc(d.lsNote)+'</i><br><br>':'')+
+  (rows?'<table><tr><th>Segment</th><th>Activity</th><th>Notes</th></tr>'+rows+'</table>':'');
+}
+$('bPrev').onclick=()=>{$('preview').innerHTML=html(get());$('prevWrap').classList.remove('hide');$('prevWrap').scrollIntoView({behavior:'smooth'})};
+$('bClose').onclick=()=>$('prevWrap').classList.add('hide');
+
+// ---- PDF
+$('bPdf').onclick=()=>{
+  if(!window.jspdf){msg('PDF library did not load. Check your internet connection.');return}
+  const d=get(),doc=new window.jspdf.jsPDF({unit:'pt',format:'letter'});
+  const W=612,H=792,M=54,CW=W-2*M;let y=M;
+  const need=n=>{if(y+n>H-M){doc.addPage();y=M}};
+  const body=(b)=>{doc.setFont('helvetica',b?'bold':'normal');doc.setFontSize(10);doc.setTextColor(0)};
+  const bar=t=>{need(46);doc.setFillColor(31,58,95);doc.rect(M,y,CW,20,'F');doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(255);doc.text(t,M+8,y+14);y+=28;body()};
+  const bullets=a=>{body();a.forEach(t=>{const l=doc.splitTextToSize(t,CW-24);need(l.length*13+3);doc.text('\u2022',M+8,y+10);doc.text(l,M+22,y+10);y+=l.length*13+3})};
+  const label=t=>{need(30);body(true);doc.text(t,M,y+10);y+=15;body()};
+  doc.setFont('helvetica','bold');doc.setFontSize(20);doc.setTextColor(31,58,95);doc.text('Lesson Plan',M,y+16);y+=24;
+  body();doc.setTextColor(85);doc.text(doc.splitTextToSize(d.subject||'',CW),M,y+10);y+=24;
+  // info box
+  const il=[['Date: ',d.date],['Grade: ',d.grade],['Subject: ',d.subject],['Lesson Topic: ',d.topic]];
+  const sl=doc.splitTextToSize('Subject: '+(d.subject||''),CW-16),tl=doc.splitTextToSize('Lesson Topic: '+(d.topic||''),CW-16);
+  const bh=13*(1+sl.length+tl.length)+14;
+  doc.setFillColor(232,238,245);doc.setDrawColor(184,196,211);doc.rect(M,y,CW,bh,'FD');
+  let ty=y+16;body(true);doc.setTextColor(0);doc.text('Date:',M+8,ty);doc.text('Grade:',M+260,ty);
+  body();doc.text(d.date||'',M+40,ty);doc.text(d.grade||'',M+300,ty);ty+=13;
+  sl.concat(tl).forEach((l,i)=>{body();doc.text(l,M+8,ty);ty+=13});
+  y+=bh+12;
+  const A=[['Opening Group Activity','objOpening'],['Stations','objStations'],['Closer','objCloser']].filter(x=>lines(d[x[1]]).length);
+  if(A.length){bar('Students Will Be Able To\u2026');A.forEach(x=>{label(x[0]);bullets(lines(d[x[1]]));y+=4})}
+  if(lines(d.materials).length){y+=4;bar('Materials Needed');bullets(lines(d.materials))}
+  const R=[['Start',d.startAct,d.startNotes],['Core Activities: Stations',d.stAct,d.stNotes],['Closer',d.clAct,d.clNotes]].filter(r=>lines(r[1]).length||lines(r[2]).length);
+  if(R.length||d.lsNote){
+    y+=8;bar('Lesson Structure');
+    if(d.lsNote){doc.setFont('helvetica','italic');doc.setFontSize(9);doc.setTextColor(85);doc.text(d.lsNote,M,y);y+=14;body()}
+    if(R.length){
+      const cw=[105,200,CW-305],wrap=(s,w)=>lines(s).flatMap(x=>doc.splitTextToSize(x,w-12));
+      const row=(cells,hdr)=>{
+        const ls=cells.map((c,i)=>hdr?[c]:wrap(c,cw[i]));
+        const h=Math.max(...ls.map(a=>a.length))*13+10;need(h);
+        let x=M;doc.setDrawColor(184,196,211);
+        ls.forEach((a,i)=>{if(hdr){doc.setFillColor(232,238,245);doc.rect(x,y,cw[i],h,'FD')}else doc.rect(x,y,cw[i],h,'S');
+          body(hdr||i===0);doc.setTextColor(0);doc.text(a,x+6,y+14);x+=cw[i]});
+        y+=h;
+      };
+      row(['Segment','Activity','Notes'],true);R.forEach(r=>row(r,false));
+    }
+  }
+  doc.save(fname(d,'pdf'));msg('PDF downloaded.');
+};
+
+// ---- storage
+const KEY='lessonPlansV1';
+const load=()=>{try{return JSON.parse(localStorage.getItem(KEY))||[]}catch(e){return[]}};
+const store=a=>{try{localStorage.setItem(KEY,JSON.stringify(a));return true}catch(e){msg('Could not save (browser storage is blocked or full).');return false}};
+function render(){
+  const a=load();
+  $('list').innerHTML=a.length?'':'<small>Nothing saved yet.</small>';
+  a.forEach(p=>{
+    const r=document.createElement('div');r.className='row'+(p.id===curId?' sel':'');
+    r.innerHTML='<span class="nm"><b>'+esc(p.name)+'</b><br><small>Saved '+new Date(p.saved).toLocaleString()+'</small></span>';
+    const b=(t,fn)=>{const x=document.createElement('button');x.textContent=t;x.onclick=fn;r.appendChild(x)};
+    r.querySelector('.nm').onclick=()=>open(p);
+    b('Load',()=>open(p));
+    b('JSON',()=>dl(fname(p.data,'json'),JSON.stringify(p.data,null,2),'application/json'));
+    b('Delete',()=>{if(confirm('Delete "'+p.name+'"?')){store(load().filter(x=>x.id!==p.id));if(curId===p.id)curId=null;render()}});
+    $('list').appendChild(r);
+  });
+}
+function open(p){set(p.data);curId=p.id;tab(false);render();window.scrollTo({top:0,behavior:'smooth'});msg('Loaded "'+p.name+'".')}
+function save(asNew){
+  const d=get(),a=load(),name=(d.topic||'Untitled')+(d.date?' \u2013 '+d.date:'');
+  const i=asNew?-1:a.findIndex(x=>x.id===curId);
+  if(i>=0)a[i]={id:curId,name,saved:Date.now(),data:d};
+  else{curId='p'+Date.now();a.unshift({id:curId,name,saved:Date.now(),data:d})}
+  if(store(a)){render();msg('Saved to this browser.')}
+}
+$('bSave').onclick=()=>save(false);
+$('bSaveNew').onclick=()=>save(true);
+$('bNew').onclick=()=>{if(confirm('Clear all cells and start a blank plan?')){set(null);curId=null;render()}};
+
+// ---- JSON
+$('bJson').onclick=()=>{const d=get();dl(fname(d,'json'),JSON.stringify(d,null,2),'application/json')};
+$('bAll').onclick=()=>{const a=load();if(!a.length){msg('Nothing saved yet.');return}dl('lesson-plans-all.json',JSON.stringify(a,null,2),'application/json')};
+$('bImp').onclick=()=>{$('file').dataset.mode='json';$('file').click()};
+$('file').onchange=e=>{
+  const f=e.target.files[0],mode=$('file').dataset.mode;e.target.value='';if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      if(mode==='md'){$('md').value=r.result;msg('File opened. Click Apply to plan.');return}
+      const j=JSON.parse(r.result);
+      if(Array.isArray(j)){const a=load();j.forEach(p=>{if(p&&p.data)a.unshift({id:'p'+Date.now()+Math.random().toString(36).slice(2,6),name:p.name||'Imported',saved:p.saved||Date.now(),data:p.data})});if(store(a)){render();msg('Imported '+j.length+' plan(s) into the saved list.')}}
+      else{set(j);curId=null;msg('Plan imported into the cells.')}
+    }catch(err){msg('That file could not be read.')}
+  };
+  r.readAsText(f);
+};
+render();
+</script>
+</body>
+</html>
